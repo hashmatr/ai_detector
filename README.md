@@ -39,9 +39,25 @@ A sophisticated AI content detection system using hybrid ensemble models to iden
 
 ### Combined Accuracy: ~95%+
 
-## Installation
+## Installation & Deployment
 
-### Backend Setup
+### 🆓 Free Tier Deployment (Recommended for Students/Personal Projects)
+
+**Cost: $0/month** for first 12 months on AWS Free Tier
+
+```bash
+# 1. Launch EC2 t2.micro instance
+# 2. SSH and run:
+curl -o setup.sh https://raw.githubusercontent.com/hashmatr/ai_detector/main/setup-ec2.sh
+chmod +x setup.sh
+./setup.sh
+```
+
+See **[FREE_TIER_QUICKSTART.md](FREE_TIER_QUICKSTART.md)** for detailed steps.
+
+### 💻 Local Development
+
+#### Backend Setup
 ```bash
 cd Backend
 pip install -r requirements.txt
