@@ -1,0 +1,61 @@
+# Data files
+data.csv/
+*.csv
+data/
+datasets/
+
+# Model files (too large for GitHub)
+Backend/Models/*.joblib
+Backend/Models/*.pkl
+Backend/Models/*.h5
+Backend/Models/*.pt
+Backend/Models/*.pth
+*.joblib
+*.pkl
+
+# Node modules
+node_modules/
+Frontend/node_modules/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Environment variables
+.env
+.env.local
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
