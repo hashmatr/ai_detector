@@ -1,1 +1,0 @@
-['text', 'source', 'prompt_id', 'text_length', 'word_count', 'label', 'cleaned_text', 'has_min_words', 'avg_word_len', 'avg_sent_len', 'ttr', 'stop_ratio', 'punc_freq', 'digit_freq', 'upper_case_ratio']
