@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import GaugeChart from 'react-gauge-chart'
 import axios from 'axios'
+import config from './config'
 
 function App() {
     const [text, setText] = useState('')
@@ -168,7 +169,7 @@ function App() {
         setHighlightedText('')
 
         try {
-            const response = await axios.post('/predict', { text })
+            const response = await axios.post(`${config.API_BASE_URL}/predict`, { text })
             const resultData = response.data
             setResult(resultData)
 
@@ -239,7 +240,7 @@ function App() {
             const formData = new FormData()
             formData.append('file', selectedFile)
 
-            const response = await axios.post('/predict-file', formData, {
+            const response = await axios.post(`${config.API_BASE_URL}/predict-file`, formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data'
                 }

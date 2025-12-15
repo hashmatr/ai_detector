@@ -1,0 +1,20 @@
+{
+    "rewrites": [
+        {
+            "source": "/predict",
+            "destination": "http://51.21.253.28/predict"
+        },
+        {
+            "source": "/predict-file",
+            "destination": "http://51.21.253.28/predict-file"
+        },
+        {
+            "source": "/info",
+            "destination": "http://51.21.253.28/info"
+        },
+        {
+            "source": "/(.*)",
+            "destination": "/index.html"
+        }
+    ]
+}
