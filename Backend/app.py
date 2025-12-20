@@ -24,6 +24,11 @@ CORS(app)
 roberta_model = None
 roberta_tokenizer = None
 roberta_model_name = "Hello-SimpleAI/chatgpt-detector-roberta"
+using_finetuned_model = False  # Flag to track which model is loaded
+
+# Fine-tuned model paths (will be used if available)
+FINETUNED_MODEL_PATH = os.path.join(os.path.dirname(__file__), "Models", "roberta_finetuned")
+FINETUNED_TOKENIZER_PATH = os.path.join(os.path.dirname(__file__), "Models", "roberta_finetuned_tokenizer")
 
 # ML Ensemble Models
 ml_ensemble = None
@@ -70,14 +75,46 @@ print("=" * 60)
 print("LOADING AI DETECTION MODELS")
 print("=" * 60)
 
-# Load RoBERTa
-print(f"\n📚 Loading RoBERTa: {roberta_model_name}...")
-try:
-    roberta_tokenizer = AutoTokenizer.from_pretrained(roberta_model_name)
-    roberta_model = AutoModelForSequenceClassification.from_pretrained(roberta_model_name)
-    print(f"   ✅ RoBERTa loaded successfully")
-except Exception as e:
-    print(f"   ❌ Failed to load RoBERTa: {e}")
+# Load RoBERTa - Try fine-tuned first, then fall back to pre-trained
+print(f"\n📚 Loading RoBERTa Model...")
+
+# Check if fine-tuned model exists
+if os.path.exists(FINETUNED_MODEL_PATH) and os.path.exists(FINETUNED_TOKENIZER_PATH):
+    print(f"   🎯 Found fine-tuned model at: {FINETUNED_MODEL_PATH}")
+    try:
+        roberta_tokenizer = AutoTokenizer.from_pretrained(FINETUNED_TOKENIZER_PATH)
+        roberta_model = AutoModelForSequenceClassification.from_pretrained(FINETUNED_MODEL_PATH)
+        using_finetuned_model = True
+        print(f"   ✅ Fine-tuned RoBERTa loaded successfully!")
+        print(f"   📊 This model was trained on YOUR dataset")
+        
+        # Try to load training info
+        training_info_path = os.path.join(FINETUNED_MODEL_PATH, "training_info.json")
+        if not os.path.exists(training_info_path):
+            training_info_path = os.path.join(os.path.dirname(__file__), "Models", "training_info.json")
+        
+        if os.path.exists(training_info_path):
+            import json
+            with open(training_info_path, 'r') as f:
+                info = json.load(f)
+            if 'final_metrics' in info:
+                metrics = info['final_metrics']
+                print(f"   📈 Training Accuracy: {metrics.get('accuracy', 'N/A'):.2%}")
+                print(f"   📈 Training F1-Score: {metrics.get('f1_score', 'N/A'):.2%}")
+    except Exception as e:
+        print(f"   ⚠️  Failed to load fine-tuned model: {e}")
+        print(f"   📥 Falling back to pre-trained model...")
+        using_finetuned_model = False
+
+# Fall back to pre-trained model if fine-tuned not available or failed
+if not using_finetuned_model:
+    print(f"   📥 Loading pre-trained: {roberta_model_name}")
+    try:
+        roberta_tokenizer = AutoTokenizer.from_pretrained(roberta_model_name)
+        roberta_model = AutoModelForSequenceClassification.from_pretrained(roberta_model_name)
+        print(f"   ✅ Pre-trained RoBERTa loaded successfully")
+    except Exception as e:
+        print(f"   ❌ Failed to load RoBERTa: {e}")
 
 # Load ML Ensemble
 models_dir = os.path.join(os.path.dirname(__file__), "Models")
@@ -111,7 +148,10 @@ print("=" * 60 + "\n")
 def get_info():
     models_active = []
     if roberta_model:
-        models_active.append('RoBERTa')
+        if using_finetuned_model:
+            models_active.append('RoBERTa (Fine-tuned)')
+        else:
+            models_active.append('RoBERTa (Pre-trained)')
     if ml_ensemble:
         models_active.append('ML Ensemble (RF+KNN)')
     
@@ -120,7 +160,9 @@ def get_info():
         'status': 'active' if roberta_model else 'inactive',
         'type': 'hybrid_transformer_ml',
         'roberta_weight': ROBERTA_WEIGHT,
-        'ml_weight': ML_WEIGHT if ml_ensemble else 0
+        'ml_weight': ML_WEIGHT if ml_ensemble else 0,
+        'using_finetuned_model': using_finetuned_model,
+        'finetuned_model_path': FINETUNED_MODEL_PATH if using_finetuned_model else None
     })
 
 @app.route('/predict', methods=['POST'])
