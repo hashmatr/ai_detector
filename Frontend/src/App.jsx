@@ -13,6 +13,7 @@ function App() {
     const [selectedFile, setSelectedFile] = useState(null)
     const [fileName, setFileName] = useState('')
     const [inputMode, setInputMode] = useState('text') // 'text' or 'file'
+    const [detectionMode, setDetectionMode] = useState('ml') // 'ml' or 'hybrid'
 
     // Load theme from localStorage on mount
     useEffect(() => {
@@ -28,13 +29,12 @@ function App() {
         document.documentElement.setAttribute('data-theme', newTheme)
     }
 
-    // Function to highlight AI-suspected sentences (AGGRESSIVE MODE)
+    // Function to highlight AI-suspected sentences
     const highlightAISentences = (inputText, aiProbability) => {
         if (!inputText || aiProbability < 0.3) {
             return inputText
         }
 
-        // Expanded AI indicator patterns for more comprehensive detection
         const aiIndicators = {
             formalTransitions: [
                 'furthermore', 'moreover', 'additionally', 'consequently',
@@ -66,22 +66,15 @@ function App() {
                 'in conclusion', 'in summary', 'to summarize',
                 'overall', 'ultimately', 'in essence', 'fundamentally',
                 'it is evident', 'it is clear', 'as such', 'in other words'
-            ],
-            formalWords: [
-                'various', 'numerous', 'multiple', 'diverse', 'myriad',
-                'plethora', 'array', 'range', 'spectrum', 'variety',
-                'aspect', 'factor', 'element', 'component', 'dimension'
             ]
         }
 
-        // Split text into sentences
         const sentences = inputText.match(/[^.!?]+[.!?]+/g) || [inputText]
 
-        const highlightedSentences = sentences.map((sentence, index) => {
+        const highlightedSentences = sentences.map((sentence) => {
             const lowerSentence = sentence.toLowerCase()
             let aiScore = 0
 
-            // Count AI indicators in this sentence
             Object.values(aiIndicators).forEach(indicators => {
                 indicators.forEach(indicator => {
                     if (lowerSentence.includes(indicator)) {
@@ -90,70 +83,28 @@ function App() {
                 })
             })
 
-            // Check for passive voice (very common in AI text)
             const passivePatterns = [
                 /\b(is|are|was|were|been|being)\s+\w+ed\b/gi,
-                /\b(can|could|should|would|may|might|must)\s+be\s+\w+ed\b/gi,
-                /\b(has|have|had)\s+been\s+\w+ed\b/gi
+                /\b(can|could|should|would|may|might|must)\s+be\s+\w+ed\b/gi
             ]
             passivePatterns.forEach(pattern => {
                 const matches = sentence.match(pattern)
-                if (matches) {
-                    aiScore += matches.length * 0.5
-                }
+                if (matches) aiScore += matches.length * 0.5
             })
 
-            // Check for formal conjunctions at start
             if (/^(Furthermore|Moreover|Additionally|However|Nevertheless|Consequently|Therefore|Thus)/i.test(sentence.trim())) {
                 aiScore += 1.5
             }
 
-            // Check sentence length (AI tends to write longer sentences)
             const wordCount = sentence.trim().split(/\s+/).length
-            if (wordCount > 20) {
-                aiScore += 0.5
-            }
-            if (wordCount > 30) {
-                aiScore += 1
-            }
+            if (wordCount > 20) aiScore += 0.5
+            if (wordCount > 30) aiScore += 1
 
-            // Check for complex punctuation (commas, semicolons)
-            const commaCount = (sentence.match(/,/g) || []).length
-            if (commaCount >= 2) {
-                aiScore += 0.5
-            }
-            if (commaCount >= 4) {
-                aiScore += 1
-            }
-
-            // Check for "that" clauses (common in AI)
-            const thatCount = (lowerSentence.match(/\bthat\b/g) || []).length
-            if (thatCount >= 1) {
-                aiScore += 0.3 * thatCount
-            }
-
-            // Check for "which" clauses
-            const whichCount = (lowerSentence.match(/\bwhich\b/g) || []).length
-            if (whichCount >= 1) {
-                aiScore += 0.3 * whichCount
-            }
-
-            // AGGRESSIVE THRESHOLDS - Much lower to highlight more sentences
-            let threshold
-            if (aiProbability > 0.8) {
-                threshold = 0.3  // Very aggressive - highlight almost everything
-            } else if (aiProbability > 0.6) {
-                threshold = 0.5  // Aggressive
-            } else if (aiProbability > 0.45) {
-                threshold = 1.0  // Moderate
-            } else {
-                threshold = 1.5  // Still fairly sensitive
-            }
+            let threshold = aiProbability > 0.8 ? 0.3 : aiProbability > 0.6 ? 0.5 : aiProbability > 0.45 ? 1.0 : 1.5
 
             if (aiScore >= threshold) {
                 return `<span class="ai-sentence-highlight">${sentence}</span>`
             }
-
             return sentence
         }).join('')
 
@@ -169,16 +120,16 @@ function App() {
         setHighlightedText('')
 
         try {
-            const response = await axios.post(`${config.API_BASE_URL}/predict`, { text })
+            const endpoint = detectionMode === 'hybrid' ? '/predict-hybrid' : '/predict-ml'
+            const response = await axios.post(`${config.API_BASE_URL}${endpoint}`, { text })
             const resultData = response.data
             setResult(resultData)
 
-            // Generate highlighted text with sentences
             const highlighted = highlightAISentences(text, resultData.ai_probability)
             setHighlightedText(highlighted)
         } catch (err) {
             console.error(err)
-            setError('Failed to analyze text. Please try again.')
+            setError(err.response?.data?.error || 'Failed to analyze text. Please try again.')
         } finally {
             setLoading(false)
         }
@@ -186,19 +137,14 @@ function App() {
 
     const handleFileSelect = (e) => {
         const file = e.target.files[0]
-        if (file) {
-            processFile(file)
-        }
+        if (file) processFile(file)
     }
 
     const handleFileDrop = (e) => {
         e.preventDefault()
         e.stopPropagation()
-
         const file = e.dataTransfer.files[0]
-        if (file) {
-            processFile(file)
-        }
+        if (file) processFile(file)
     }
 
     const handleDragOver = (e) => {
@@ -207,17 +153,14 @@ function App() {
     }
 
     const processFile = (file) => {
-        const validTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/msword']
         const validExtensions = ['.pdf', '.docx', '.doc']
-
         const fileExtension = '.' + file.name.split('.').pop().toLowerCase()
 
-        if (!validTypes.includes(file.type) && !validExtensions.includes(fileExtension)) {
-            setError('Please upload a PDF or Word document (.pdf, .docx, .doc)')
+        if (!validExtensions.includes(fileExtension)) {
+            setError('Please upload a PDF or Word document')
             return
         }
 
-        // Check file size (max 10MB)
         if (file.size > 10 * 1024 * 1024) {
             setError('File size must be less than 10MB')
             return
@@ -239,39 +182,22 @@ function App() {
         try {
             const formData = new FormData()
             formData.append('file', selectedFile)
+            formData.append('mode', detectionMode)
 
             const response = await axios.post(`${config.API_BASE_URL}/predict-file`, formData, {
-                headers: {
-                    'Content-Type': 'multipart/form-data'
-                }
+                headers: { 'Content-Type': 'multipart/form-data' }
             })
 
             const resultData = response.data
-            console.log('[File] Upload result:', resultData)
-            console.log('[Text] Has extracted_text?', !!resultData.extracted_text)
-            console.log('[Stats] AI probability:', resultData.ai_probability)
-
-            if (resultData.extracted_text) {
-                console.log('[Text] Extracted text length:', resultData.extracted_text.length)
-                console.log('[Text] First 100 chars:', resultData.extracted_text.substring(0, 100))
-            }
-
             setResult(resultData)
 
-            // Generate highlighted text from extracted text
             if (resultData.extracted_text) {
-                console.log('[Process] Generating highlighted text...')
                 const highlighted = highlightAISentences(resultData.extracted_text, resultData.ai_probability)
-                console.log('[Success] Highlighted text generated, length:', highlighted.length)
-                console.log('[Success] First 200 chars of highlighted:', highlighted.substring(0, 200))
                 setHighlightedText(highlighted)
-                console.log('[Success] highlightedText state updated')
-            } else {
-                console.warn('[Warning] No extracted_text in response')
             }
         } catch (err) {
             console.error(err)
-            setError(err.response?.data?.error || 'Failed to analyze file. Please try again.')
+            setError(err.response?.data?.error || 'Failed to analyze file.')
         } finally {
             setLoading(false)
         }
@@ -285,32 +211,19 @@ function App() {
         setHighlightedText('')
     }
 
-
     const wordCount = text.trim().split(/\s+/).filter(w => w.length > 0).length
-
-    // Debug logging for render
-    if (result) {
-        console.log('[Render] highlightedText exists?', !!highlightedText)
-        console.log('[Render] highlightedText length:', highlightedText?.length || 0)
-        console.log('[Render] AI probability:', result.ai_probability)
-        console.log('[Render] Should show highlight section?', highlightedText && result.ai_probability > 0.3)
-    }
 
     return (
         <>
-            {/* Theme Toggle Button */}
+            {/* Theme Toggle */}
             <div className="theme-toggle">
-                <button
-                    className="theme-toggle-btn"
-                    onClick={toggleTheme}
-                    aria-label="Toggle theme"
-                >
+                <button className="theme-toggle-btn" onClick={toggleTheme} aria-label="Toggle theme">
                     {theme === 'dark' ? '☀' : '☾'}
                 </button>
             </div>
 
             <div className="container">
-                {/* Header Section */}
+                {/* Header */}
                 <div className="header">
                     <h1 className="header-title">AI Content Detector</h1>
                     <p className="header-subtitle">
@@ -320,25 +233,40 @@ function App() {
 
                 {/* Main Card */}
                 <div className="main-card">
-                    {/* Mode Switcher */}
+                    {/* Detection Mode Selector */}
+                    <div className="detection-mode-selector">
+                        <div className="mode-label">Detection Mode:</div>
+                        <div className="detection-modes">
+                            <button
+                                className={`detection-mode-btn ${detectionMode === 'ml' ? 'active' : ''}`}
+                                onClick={() => setDetectionMode('ml')}
+                            >
+                                <span className="mode-icon">🔬</span>
+                                <span className="mode-title">Pure ML</span>
+                                <span className="mode-desc">SVM + AdaBoost + Random Forest</span>
+                            </button>
+                            <button
+                                className={`detection-mode-btn ${detectionMode === 'hybrid' ? 'active' : ''}`}
+                                onClick={() => setDetectionMode('hybrid')}
+                            >
+                                <span className="mode-icon">🤖</span>
+                                <span className="mode-title">Hybrid ML+DL</span>
+                                <span className="mode-desc">RoBERTa + ML Ensemble</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Mode Switcher (Text/File) */}
                     <div className="mode-switcher">
                         <button
                             className={`mode-btn ${inputMode === 'text' ? 'active' : ''}`}
-                            onClick={() => {
-                                setInputMode('text')
-                                clearFile()
-                            }}
+                            onClick={() => { setInputMode('text'); clearFile() }}
                         >
                             <span>Text Input</span>
                         </button>
                         <button
                             className={`mode-btn ${inputMode === 'file' ? 'active' : ''}`}
-                            onClick={() => {
-                                setInputMode('file')
-                                setText('')
-                                setResult(null)
-                                setHighlightedText('')
-                            }}
+                            onClick={() => { setInputMode('file'); setText(''); setResult(null); setHighlightedText('') }}
                         >
                             <span>File Upload</span>
                         </button>
@@ -347,7 +275,6 @@ function App() {
                     {/* Text Input Mode */}
                     {inputMode === 'text' && (
                         <>
-                            {/* Input Area */}
                             <div className="input-area">
                                 <div className="textarea-wrapper">
                                     <textarea
@@ -358,7 +285,6 @@ function App() {
                                 </div>
                             </div>
 
-                            {/* Controls */}
                             <div className="controls">
                                 <div className="word-count">
                                     <span></span>
@@ -376,20 +302,15 @@ function App() {
                                             <span>Analyzing...</span>
                                         </>
                                     ) : (
-                                        <>
-                                            <span>Analyze Content</span>
-                                        </>
+                                        <span>Analyze Content</span>
                                     )}
                                 </button>
                             </div>
 
-                            {/* Warning Message */}
                             {wordCount > 0 && wordCount < 100 && (
                                 <div className="warning-message">
                                     <span>⚠</span>
-                                    <span>
-                                        Please add at least {100 - wordCount} more word{100 - wordCount !== 1 ? 's' : ''} for accurate analysis.
-                                    </span>
+                                    <span>Please add at least {100 - wordCount} more word{100 - wordCount !== 1 ? 's' : ''} for accurate analysis.</span>
                                 </div>
                             )}
                         </>
@@ -398,7 +319,6 @@ function App() {
                     {/* File Upload Mode */}
                     {inputMode === 'file' && (
                         <>
-                            {/* File Upload Area */}
                             <div className="file-upload-area">
                                 {!selectedFile ? (
                                     <div
@@ -418,7 +338,7 @@ function App() {
                                             />
                                             Choose File
                                         </label>
-                                        <p className="file-info">Supported formats: PDF, DOCX, TXT</p>
+                                        <p className="file-info">Supported formats: PDF, DOCX</p>
                                     </div>
                                 ) : (
                                     <div className="file-preview">
@@ -444,7 +364,6 @@ function App() {
                                 )}
                             </div>
 
-                            {/* File Upload Controls */}
                             {selectedFile && (
                                 <div className="controls">
                                     <div className="file-ready-indicator">
@@ -462,9 +381,7 @@ function App() {
                                                 <span>Analyzing...</span>
                                             </>
                                         ) : (
-                                            <>
-                                                <span>Analyze Content</span>
-                                            </>
+                                            <span>Analyze Content</span>
                                         )}
                                     </button>
                                 </div>
@@ -483,7 +400,6 @@ function App() {
                     {/* Results Section */}
                     {result && (
                         <div className="result-section">
-                            {/* Result Header */}
                             <div className="result-header">
                                 <h2>Analysis Results</h2>
                                 <div className={`result-label ${result.is_ai ? 'ai-text' : 'human-text'}`}>
@@ -491,7 +407,14 @@ function App() {
                                 </div>
                             </div>
 
-                            {/* File Info (if file mode) */}
+                            {/* Mode Indicator */}
+                            <div className="mode-indicator">
+                                <span className={`mode-badge ${result.mode === 'hybrid' ? 'hybrid' : 'ml'}`}>
+                                    {result.mode === 'hybrid' ? '🤖 Hybrid ML+DL' : '🔬 Pure ML'}
+                                </span>
+                            </div>
+
+                            {/* File Info */}
                             {inputMode === 'file' && result.filename && (
                                 <div className="file-result-info">
                                     <div className="file-result-item">
@@ -521,7 +444,6 @@ function App() {
                                     needleColor={theme === 'dark' ? '#B6BCE6' : '#4A5568'}
                                     needleBaseColor={theme === 'dark' ? '#B6BCE6' : '#4A5568'}
                                     animate={true}
-                                    animDelay={0}
                                 />
                             </div>
 
@@ -541,7 +463,50 @@ function App() {
                                 </div>
                             </div>
 
-                            {/* Highlighted Text Section */}
+                            {/* Model Breakdown */}
+                            {result.breakdown && (
+                                <div className="model-breakdown">
+                                    <h3>Model Breakdown</h3>
+                                    <div className="breakdown-grid">
+                                        {result.mode === 'hybrid' && result.breakdown.roberta_prob !== undefined && (
+                                            <>
+                                                <div className="breakdown-item">
+                                                    <span className="breakdown-label">🤖 RoBERTa</span>
+                                                    <span className="breakdown-value">{(result.breakdown.roberta_prob * 100).toFixed(1)}%</span>
+                                                </div>
+                                                <div className="breakdown-item">
+                                                    <span className="breakdown-label">🔬 ML Ensemble</span>
+                                                    <span className="breakdown-value">{(result.breakdown.ml_prob * 100).toFixed(1)}%</span>
+                                                </div>
+                                            </>
+                                        )}
+                                        {result.mode !== 'hybrid' && (
+                                            <>
+                                                {result.breakdown.SVM !== undefined && (
+                                                    <div className="breakdown-item">
+                                                        <span className="breakdown-label">SVM</span>
+                                                        <span className="breakdown-value">{(result.breakdown.SVM * 100).toFixed(1)}%</span>
+                                                    </div>
+                                                )}
+                                                {result.breakdown.AdaBoost !== undefined && (
+                                                    <div className="breakdown-item">
+                                                        <span className="breakdown-label">AdaBoost</span>
+                                                        <span className="breakdown-value">{(result.breakdown.AdaBoost * 100).toFixed(1)}%</span>
+                                                    </div>
+                                                )}
+                                                {result.breakdown.RandomForest !== undefined && (
+                                                    <div className="breakdown-item">
+                                                        <span className="breakdown-label">Random Forest</span>
+                                                        <span className="breakdown-value">{(result.breakdown.RandomForest * 100).toFixed(1)}%</span>
+                                                    </div>
+                                                )}
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Highlighted Text */}
                             {highlightedText && result.ai_probability > 0.3 && (
                                 <div className="highlighted-text-section">
                                     <div className="highlighted-text-header">
@@ -555,7 +520,7 @@ function App() {
                                     <div className="highlighted-text-legend">
                                         <span className="legend-item">
                                             <span className="legend-color ai-sentence-demo"></span>
-                                            <span>Sentences with AI-like patterns (formal language, buzzwords, complex structure)</span>
+                                            <span>Sentences with AI-like patterns</span>
                                         </span>
                                     </div>
                                 </div>

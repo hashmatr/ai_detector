@@ -22,6 +22,7 @@ function AppEnhanced() {
     const [selectedFile, setSelectedFile] = useState(null);
     const [fileName, setFileName] = useState('');
     const [inputMode, setInputMode] = useState('text'); // 'text' or 'file'
+    const [detectionMode, setDetectionMode] = useState('ml'); // 'ml' or 'hybrid'
 
     // Load theme from localStorage on mount
     useEffect(() => {
@@ -178,7 +179,8 @@ function AppEnhanced() {
         setHighlightedText('');
 
         try {
-            const response = await axios.post(`${config.API_BASE_URL}/predict`, { text });
+            const endpoint = detectionMode === 'hybrid' ? '/predict-hybrid' : '/predict-ml';
+            const response = await axios.post(`${config.API_BASE_URL}${endpoint}`, { text });
             const resultData = response.data;
             setResult(resultData);
 
@@ -255,6 +257,7 @@ function AppEnhanced() {
         try {
             const formData = new FormData();
             formData.append('file', selectedFile);
+            formData.append('mode', detectionMode);
 
             const response = await axios.post(`${config.API_BASE_URL}/predict-file`, formData, {
                 headers: {
@@ -352,6 +355,29 @@ function AppEnhanced() {
                 {/* Analyzer Tab */}
                 {activeTab === 'analyzer' && (
                     <div className="main-card">
+                        {/* Detection Mode Selector */}
+                        <div className="detection-mode-selector">
+                            <div className="mode-label">Detection Mode:</div>
+                            <div className="detection-modes">
+                                <button
+                                    className={`detection-mode-btn ${detectionMode === 'ml' ? 'active' : ''}`}
+                                    onClick={() => setDetectionMode('ml')}
+                                >
+                                    <span className="mode-icon">🔬</span>
+                                    <span className="mode-title">Pure ML</span>
+                                    <span className="mode-desc">SVM + AdaBoost + Random Forest</span>
+                                </button>
+                                <button
+                                    className={`detection-mode-btn ${detectionMode === 'hybrid' ? 'active' : ''}`}
+                                    onClick={() => setDetectionMode('hybrid')}
+                                >
+                                    <span className="mode-icon">🤖</span>
+                                    <span className="mode-title">Hybrid ML+DL</span>
+                                    <span className="mode-desc">RoBERTa + ML Ensemble</span>
+                                </button>
+                            </div>
+                        </div>
+
                         {/* Mode Switcher */}
                         <div className="mode-switcher">
                             <button

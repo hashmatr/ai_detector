@@ -1,8 +1,5 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import torch
-import torch.nn.functional as F
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import joblib
 import numpy as np
 import pandas as pd
@@ -20,125 +17,227 @@ CORS(app)
 # GLOBAL VARIABLES
 # ===========================
 
-# RoBERTa Model
+# Pure ML Ensemble Models
+svm_model = None
+adaboost_model = None
+random_forest_model = None
+
+tfidf_vectorizer = None
+
+# Deep Learning Model (RoBERTa)
 roberta_model = None
 roberta_tokenizer = None
-roberta_model_name = "Hello-SimpleAI/chatgpt-detector-roberta"
-using_finetuned_model = False  # Flag to track which model is loaded
+torch_available = False
 
-# Fine-tuned model paths (will be used if available)
-FINETUNED_MODEL_PATH = os.path.join(os.path.dirname(__file__), "Models", "roberta_finetuned")
-FINETUNED_TOKENIZER_PATH = os.path.join(os.path.dirname(__file__), "Models", "roberta_finetuned_tokenizer")
+# Model weights for ensemble voting
+MODEL_WEIGHTS = {
+    'SVM': 0.35,
+    'AdaBoost': 0.20,
+    'RandomForest': 0.45
+}
 
-# ML Ensemble Models
-ml_ensemble = None
-ml_scaler = None
-ml_tfidf = None
+# Hybrid weights
+ROBERTA_WEIGHT = 0.70
+ML_WEIGHT = 0.30
 
-# Weights for ensemble combination
-ROBERTA_WEIGHT = 0.70  # RoBERTa gets 70% weight
-ML_WEIGHT = 0.30       # ML models get 30% weight
-
-# ===========================
-# FEATURE EXTRACTION
-# ===========================
-
-def extract_text_features(text):
-    """Extract linguistic features from text"""
-    if not isinstance(text, str):
-        text = str(text)
-    
-    words = text.split()
-    word_count = len(words)
-    
-    features = {
-        'text_length': len(text),
-        'word_count': word_count,
-        'avg_word_length': np.mean([len(w) for w in words]) if words else 0,
-        'unique_word_ratio': len(set(words)) / word_count if word_count > 0 else 0,
-        'upper_case_ratio': sum(1 for c in text if c.isupper()) / len(text) if text else 0,
-        'digit_freq': sum(1 for c in text if c.isdigit()) / len(text) if text else 0,
-        'punc_freq': sum(1 for c in text if c in '.,!?;:') / len(text) if text else 0,
-        'exclamation_count': text.count('!'),
-        'question_count': text.count('?'),
-        'comma_count': text.count(','),
-        'period_count': text.count('.'),
-        'avg_sentence_length': word_count / max(text.count('.') + text.count('!') + text.count('?'), 1),
-    }
-    return features
+# Models directory
+MODELS_DIR = os.path.join(os.path.dirname(__file__), "Models")
 
 # ===========================
 # LOAD MODELS
 # ===========================
 
 print("=" * 60)
-print("LOADING AI DETECTION MODELS")
+print("🚀 LOADING AI DETECTION MODELS")
 print("=" * 60)
 
-# Load RoBERTa - Try fine-tuned first, then fall back to pre-trained
-print(f"\n📚 Loading RoBERTa Model...")
+# --- LOAD ML MODELS ---
+print("\n📦 LOADING PURE ML MODELS")
+print("-" * 40)
 
-# Check if fine-tuned model exists
-if os.path.exists(FINETUNED_MODEL_PATH) and os.path.exists(FINETUNED_TOKENIZER_PATH):
-    print(f"   🎯 Found fine-tuned model at: {FINETUNED_MODEL_PATH}")
-    try:
-        roberta_tokenizer = AutoTokenizer.from_pretrained(FINETUNED_TOKENIZER_PATH)
-        roberta_model = AutoModelForSequenceClassification.from_pretrained(FINETUNED_MODEL_PATH)
-        using_finetuned_model = True
-        print(f"   ✅ Fine-tuned RoBERTa loaded successfully!")
-        print(f"   📊 This model was trained on YOUR dataset")
-        
-        # Try to load training info
-        training_info_path = os.path.join(FINETUNED_MODEL_PATH, "training_info.json")
-        if not os.path.exists(training_info_path):
-            training_info_path = os.path.join(os.path.dirname(__file__), "Models", "training_info.json")
-        
-        if os.path.exists(training_info_path):
-            import json
-            with open(training_info_path, 'r') as f:
-                info = json.load(f)
-            if 'final_metrics' in info:
-                metrics = info['final_metrics']
-                print(f"   📈 Training Accuracy: {metrics.get('accuracy', 'N/A'):.2%}")
-                print(f"   📈 Training F1-Score: {metrics.get('f1_score', 'N/A'):.2%}")
-    except Exception as e:
-        print(f"   ⚠️  Failed to load fine-tuned model: {e}")
-        print(f"   📥 Falling back to pre-trained model...")
-        using_finetuned_model = False
-
-# Fall back to pre-trained model if fine-tuned not available or failed
-if not using_finetuned_model:
-    print(f"   📥 Loading pre-trained: {roberta_model_name}")
-    try:
-        roberta_tokenizer = AutoTokenizer.from_pretrained(roberta_model_name)
-        roberta_model = AutoModelForSequenceClassification.from_pretrained(roberta_model_name)
-        print(f"   ✅ Pre-trained RoBERTa loaded successfully")
-    except Exception as e:
-        print(f"   ❌ Failed to load RoBERTa: {e}")
-
-# Load ML Ensemble
-models_dir = os.path.join(os.path.dirname(__file__), "Models")
-ensemble_path = os.path.join(models_dir, "ml_ensemble_model.joblib")
-scaler_path = os.path.join(models_dir, "ml_ensemble_scaler.joblib")
-tfidf_path = os.path.join(models_dir, "ml_ensemble_tfidf.joblib")
-
-print(f"\n📚 Loading ML Ensemble (Random Forest + KNN)...")
+# Load TF-IDF Vectorizer
+print(f"📝 Loading TF-IDF Vectorizer...")
+tfidf_path = os.path.join(MODELS_DIR, "tfidf_vectorizer.joblib")
 try:
-    if os.path.exists(ensemble_path) and os.path.exists(scaler_path) and os.path.exists(tfidf_path):
-        ml_ensemble = joblib.load(ensemble_path)
-        ml_scaler = joblib.load(scaler_path)
-        ml_tfidf = joblib.load(tfidf_path)
-        print(f"   ✅ ML Ensemble loaded successfully")
-    else:
-        print(f"   ⚠️  ML Ensemble not found. Run train_ensemble_all_data.py first.")
-        print(f"   Will use RoBERTa only.")
+    if os.path.exists(tfidf_path):
+        tfidf_vectorizer = joblib.load(tfidf_path)
+        print(f"   ✅ TF-IDF Vectorizer loaded")
 except Exception as e:
-    print(f"   ⚠️  Failed to load ML Ensemble: {e}")
-    print(f"   Will use RoBERTa only.")
+    print(f"   ❌ Failed: {e}")
+
+# Load SVM Model
+print(f"🔷 Loading SVM Model...")
+svm_path = os.path.join(MODELS_DIR, "svm_model.joblib")
+try:
+    if os.path.exists(svm_path):
+        svm_model = joblib.load(svm_path)
+        print(f"   ✅ SVM Model loaded")
+except Exception as e:
+    print(f"   ❌ Failed: {e}")
+
+# Load AdaBoost Model
+print(f"🔶 Loading AdaBoost Model...")
+adaboost_path = os.path.join(MODELS_DIR, "adaboost_model.joblib")
+try:
+    if os.path.exists(adaboost_path):
+        adaboost_model = joblib.load(adaboost_path)
+        print(f"   ✅ AdaBoost Model loaded")
+except Exception as e:
+    print(f"   ❌ Failed: {e}")
+
+# Load Random Forest Model
+print(f"🌲 Loading Random Forest Model...")
+rf_path = os.path.join(MODELS_DIR, "random_forest_model.joblib")
+try:
+    if os.path.exists(rf_path):
+        random_forest_model = joblib.load(rf_path)
+        print(f"   ✅ Random Forest Model loaded")
+except Exception as e:
+    print(f"   ❌ Failed: {e}")
+
+# Count ML models
+ml_models_loaded = sum([
+    svm_model is not None,
+    adaboost_model is not None,
+    random_forest_model is not None
+])
+
+# --- LOAD DL MODEL (RoBERTa) ---
+print("\n🤖 LOADING DEEP LEARNING MODEL")
+print("-" * 40)
+print("📥 Loading RoBERTa Transformer...")
+
+try:
+    import torch
+    import torch.nn.functional as F
+    from transformers import AutoTokenizer, AutoModelForSequenceClassification
+    
+    torch_available = True
+    roberta_model_name = "Hello-SimpleAI/chatgpt-detector-roberta"
+    
+    roberta_tokenizer = AutoTokenizer.from_pretrained(roberta_model_name)
+    roberta_model = AutoModelForSequenceClassification.from_pretrained(roberta_model_name)
+    print(f"   ✅ RoBERTa loaded ({roberta_model_name})")
+except Exception as e:
+    print(f"   ❌ RoBERTa not available: {e}")
+    torch_available = False
 
 print("\n" + "=" * 60)
-print(f"MODELS LOADED - RoBERTa Weight: {ROBERTA_WEIGHT:.0%}, ML Weight: {ML_WEIGHT:.0%}")
+print(f"✅ ML MODELS: {ml_models_loaded}/3")
+print(f"✅ DL MODEL: {'RoBERTa Loaded' if roberta_model else 'Not Available'}")
+print(f"📊 TF-IDF: {'✅' if tfidf_vectorizer else '❌'}")
+print("-" * 60)
+print(f"⚖️  HYBRID RATIO: RoBERTa {ROBERTA_WEIGHT*100:.0f}% | ML {ML_WEIGHT*100:.0f}%")
 print("=" * 60 + "\n")
+
+# ===========================
+# PREDICTION FUNCTIONS
+# ===========================
+
+def predict_ml_only(text):
+    """Pure ML prediction using SVM, AdaBoost, Random Forest"""
+    if not tfidf_vectorizer:
+        raise ValueError("TF-IDF Vectorizer not loaded")
+    
+    X = tfidf_vectorizer.transform([text])
+    predictions = {}
+    probabilities = {}
+    
+    if svm_model:
+        try:
+            pred = svm_model.predict(X)[0]
+            predictions['SVM'] = int(pred)
+            decision = svm_model.decision_function(X)[0]
+            prob = 1 / (1 + np.exp(-decision))
+            probabilities['SVM'] = float(prob)
+        except Exception as e:
+            print(f"⚠️ SVM error: {e}")
+    
+    if adaboost_model:
+        try:
+            pred = adaboost_model.predict(X)[0]
+            predictions['AdaBoost'] = int(pred)
+            prob = adaboost_model.predict_proba(X)[0][1]
+            probabilities['AdaBoost'] = float(prob)
+        except Exception as e:
+            print(f"⚠️ AdaBoost error: {e}")
+    
+    if random_forest_model:
+        try:
+            pred = random_forest_model.predict(X)[0]
+            predictions['RandomForest'] = int(pred)
+            prob = random_forest_model.predict_proba(X)[0][1]
+            probabilities['RandomForest'] = float(prob)
+        except Exception as e:
+            print(f"⚠️ Random Forest error: {e}")
+    
+    if not probabilities:
+        raise ValueError("No ML models available")
+    
+    # Weighted average
+    total_weight = 0
+    weighted_prob = 0
+    for model_name, prob in probabilities.items():
+        weight = MODEL_WEIGHTS.get(model_name, 0.33)
+        weighted_prob += weight * prob
+        total_weight += weight
+    
+    final_prob = weighted_prob / total_weight if total_weight > 0 else 0.5
+    
+    return {
+        'final_probability': final_prob,
+        'predictions': predictions,
+        'probabilities': probabilities,
+        'models_used': len(predictions)
+    }
+
+
+def predict_roberta(text):
+    """RoBERTa Deep Learning prediction"""
+    import torch
+    import torch.nn.functional as F
+    
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    sentences = [s.strip() for s in sentences if len(s.strip()) > 50]
+    
+    if not sentences:
+        sentences = [text]
+    
+    if len(sentences) > 1:
+        chunks = sentences + [text]
+    else:
+        chunks = sentences
+    
+    chunk_probs = []
+    for chunk in chunks:
+        inputs = roberta_tokenizer(chunk, return_tensors="pt", truncation=True, max_length=512)
+        with torch.no_grad():
+            outputs = roberta_model(**inputs)
+            probs = F.softmax(outputs.logits, dim=-1)
+            ai_p = float(probs[0][1])
+            chunk_probs.append(ai_p)
+    
+    avg_prob = sum(chunk_probs) / len(chunk_probs)
+    calibrated = min(avg_prob * 1.35, 1.0)
+    
+    return calibrated
+
+
+def predict_hybrid(text):
+    """Hybrid ML + DL prediction"""
+    ml_result = predict_ml_only(text)
+    ml_prob = ml_result['final_probability']
+    
+    roberta_prob = predict_roberta(text)
+    
+    final_prob = (ROBERTA_WEIGHT * roberta_prob) + (ML_WEIGHT * ml_prob)
+    
+    return {
+        'final_probability': final_prob,
+        'ml_probability': ml_prob,
+        'roberta_probability': roberta_prob,
+        'ml_breakdown': ml_result['probabilities']
+    }
 
 # ===========================
 # ROUTES
@@ -146,306 +245,183 @@ print("=" * 60 + "\n")
 
 @app.route('/info', methods=['GET'])
 def get_info():
-    models_active = []
-    if roberta_model:
-        if using_finetuned_model:
-            models_active.append('RoBERTa (Fine-tuned)')
-        else:
-            models_active.append('RoBERTa (Pre-trained)')
-    if ml_ensemble:
-        models_active.append('ML Ensemble (RF+KNN)')
-    
     return jsonify({
-        'model_name': f'Hybrid Ensemble: {" + ".join(models_active)}',
-        'status': 'active' if roberta_model else 'inactive',
-        'type': 'hybrid_transformer_ml',
-        'roberta_weight': ROBERTA_WEIGHT,
-        'ml_weight': ML_WEIGHT if ml_ensemble else 0,
-        'using_finetuned_model': using_finetuned_model,
-        'finetuned_model_path': FINETUNED_MODEL_PATH if using_finetuned_model else None
+        'ml_models_loaded': ml_models_loaded,
+        'dl_model_loaded': roberta_model is not None,
+        'vectorizer_loaded': tfidf_vectorizer is not None,
+        'modes_available': {
+            'ml_only': ml_models_loaded > 0 and tfidf_vectorizer is not None,
+            'hybrid': ml_models_loaded > 0 and roberta_model is not None
+        },
+        'configuration': {
+            'roberta_weight': ROBERTA_WEIGHT,
+            'ml_weight': ML_WEIGHT,
+            'ml_models_breakdown': MODEL_WEIGHTS
+        }
     })
+
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    if not roberta_model or not roberta_tokenizer:
-        return jsonify({'error': 'RoBERTa model not loaded'}), 500
+    """Default prediction - uses ML only"""
+    return predict_ml_endpoint()
 
+
+@app.route('/predict-ml', methods=['POST'])
+def predict_ml_endpoint():
+    """Pure ML prediction endpoint"""
+    if ml_models_loaded == 0 or not tfidf_vectorizer:
+        return jsonify({'error': 'ML models not loaded'}), 500
+    
     data = request.get_json()
     text = data.get('text', '')
-
+    
     if not text:
         return jsonify({'error': 'No text provided'}), 400
-
+    
     try:
-        # ===========================
-        # 1️⃣ RoBERTa Prediction
-        # ===========================
+        result = predict_ml_only(text)
+        final_prob = result['final_probability']
+        is_ai = final_prob > 0.50
         
-        # Split text into chunks
-        sentences = re.split(r'(?<=[.!?])\s+', text)
-        sentences = [s.strip() for s in sentences if len(s.strip()) > 50]
+        confidence = 'High' if final_prob > 0.85 or final_prob < 0.15 else \
+                    'Medium' if final_prob > 0.70 or final_prob < 0.30 else 'Low'
         
-        if not sentences:
-            sentences = [text]
-            
-        if len(sentences) > 1:
-            chunks = sentences + [text]
-        else:
-            chunks = sentences
-
-        chunk_probs = []
+        print(f"\n[ML] Final: {final_prob:.4f} → {'AI' if is_ai else 'Human'}")
         
-        for chunk in chunks:
-            inputs = roberta_tokenizer(chunk, return_tensors="pt", truncation=True, max_length=512)
-            
-            with torch.no_grad():
-                outputs = roberta_model(**inputs)
-                probs = F.softmax(outputs.logits, dim=-1)
-                ai_p = float(probs[0][1])
-                chunk_probs.append(ai_p)
-        
-        avg_ai_prob = sum(chunk_probs) / len(chunk_probs)
-        
-        # Apply calibration
-        calibration_factor = 1.35
-        roberta_ai_prob = min(avg_ai_prob * calibration_factor, 1.0)
-        
-        print(f"🤖 RoBERTa: Raw={avg_ai_prob:.4f}, Calibrated={roberta_ai_prob:.4f}")
-        
-        # ===========================
-        # 2️⃣ ML Ensemble Prediction
-        # ===========================
-        
-        ml_ai_prob = 0.5  # Default neutral if ML not available
-        
-        if ml_ensemble and ml_scaler and ml_tfidf:
-            try:
-                # Extract features
-                feature_dict = extract_text_features(text)
-                feature_df = pd.DataFrame([feature_dict])
-                
-                # TF-IDF features
-                tfidf_features = ml_tfidf.transform([text]).toarray()
-                tfidf_df = pd.DataFrame(tfidf_features, columns=[f'tfidf_{i}' for i in range(tfidf_features.shape[1])])
-                
-                # Combine features
-                X = pd.concat([feature_df, tfidf_df], axis=1)
-                
-                # Scale
-                X_scaled = ml_scaler.transform(X)
-                
-                # Predict
-                ml_ai_prob = ml_ensemble.predict_proba(X_scaled)[0][1]
-                
-                print(f"🔬 ML Ensemble: {ml_ai_prob:.4f}")
-                
-            except Exception as e:
-                print(f"⚠️  ML prediction failed: {e}")
-                ml_ai_prob = 0.5  # Neutral fallback
-        
-        # ===========================
-        # 3️⃣ Combine Predictions
-        # ===========================
-        
-        # Weighted average
-        if ml_ensemble:
-            final_ai_prob = (ROBERTA_WEIGHT * roberta_ai_prob) + (ML_WEIGHT * ml_ai_prob)
-            model_name = 'Hybrid Ensemble (RoBERTa + RF + KNN)'
-        else:
-            final_ai_prob = roberta_ai_prob
-            model_name = 'RoBERTa ChatGPT Detector'
-        
-        # Decision threshold
-        is_ai = final_ai_prob > 0.45
-        
-        print(f"🎯 Final: {final_ai_prob:.4f} → {'AI' if is_ai else 'Human'}")
-        print("-" * 60)
-        
-        result = {
+        return jsonify({
             'is_ai': bool(is_ai),
-            'ai_probability': float(final_ai_prob),
-            'human_probability': float(1.0 - final_ai_prob),
+            'ai_probability': float(final_prob),
+            'human_probability': float(1.0 - final_prob),
             'label': 'AI' if is_ai else 'Human',
-            'model_name': model_name,
+            'confidence': confidence,
+            'model_name': 'Pure ML Ensemble (SVM + AdaBoost + RF)',
+            'mode': 'ml_only',
+            'breakdown': result['probabilities']
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/predict-hybrid', methods=['POST'])
+def predict_hybrid_endpoint():
+    """Hybrid ML + DL prediction endpoint"""
+    if not roberta_model:
+        return jsonify({'error': 'RoBERTa model not loaded'}), 500
+    if ml_models_loaded == 0:
+        return jsonify({'error': 'ML models not loaded'}), 500
+    
+    data = request.get_json()
+    text = data.get('text', '')
+    
+    if not text:
+        return jsonify({'error': 'No text provided'}), 400
+    
+    try:
+        result = predict_hybrid(text)
+        final_prob = result['final_probability']
+        is_ai = final_prob > 0.45
+        
+        confidence = 'High' if final_prob > 0.85 or final_prob < 0.15 else \
+                    'Medium' if final_prob > 0.70 or final_prob < 0.30 else 'Low'
+        
+        print(f"\n[Hybrid] RoBERTa: {result['roberta_probability']:.4f} | ML: {result['ml_probability']:.4f} | Final: {final_prob:.4f}")
+        
+        return jsonify({
+            'is_ai': bool(is_ai),
+            'ai_probability': float(final_prob),
+            'human_probability': float(1.0 - final_prob),
+            'label': 'AI' if is_ai else 'Human',
+            'confidence': confidence,
+            'model_name': 'Hybrid Ensemble (RoBERTa + ML)',
+            'mode': 'hybrid',
             'breakdown': {
-                'roberta_prob': float(roberta_ai_prob),
-                'ml_prob': float(ml_ai_prob) if ml_ensemble else None,
-                'roberta_weight': float(ROBERTA_WEIGHT),
-                'ml_weight': float(ML_WEIGHT) if ml_ensemble else 0.0
+                'roberta_prob': float(result['roberta_probability']),
+                'ml_prob': float(result['ml_probability']),
+                'ml_details': result['ml_breakdown']
             }
-        }
-        
-        return jsonify(result)
-        
+        })
     except Exception as e:
         import traceback
-        print("ERROR:", str(e))
-        print(traceback.format_exc())
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
 
 @app.route('/predict-file', methods=['POST'])
 def predict_file():
-    """Predict AI content from uploaded Word or PDF file"""
-    if not roberta_model or not roberta_tokenizer:
-        return jsonify({'error': 'RoBERTa model not loaded'}), 500
+    """File prediction with mode selection"""
+    mode = request.form.get('mode', 'ml')  # Default to ML
     
-    # Check if file is present
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
     
     file = request.files['file']
-    
     if file.filename == '':
         return jsonify({'error': 'No file selected'}), 400
     
-    # Get file extension
     filename = secure_filename(file.filename)
     file_ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
     
     if file_ext not in ['pdf', 'docx', 'doc']:
-        return jsonify({'error': 'Only PDF and Word (.docx, .doc) files are supported'}), 400
+        return jsonify({'error': 'Only PDF and Word files supported'}), 400
     
     try:
-        # Extract text based on file type
         text = ''
-        
         if file_ext == 'pdf':
-            # Read PDF
             pdf_file = io.BytesIO(file.read())
             pdf_reader = PdfReader(pdf_file)
-            
-            # Extract text from all pages
             for page in pdf_reader.pages:
                 text += page.extract_text() + '\n'
-        
         elif file_ext in ['docx', 'doc']:
-            # Read Word document
             doc_file = io.BytesIO(file.read())
             doc = Document(doc_file)
-            
-            # Extract text from all paragraphs
             for paragraph in doc.paragraphs:
                 text += paragraph.text + '\n'
         
-        # Clean up text
         text = text.strip()
-        
         if not text:
-            return jsonify({'error': 'No text found in the file'}), 400
+            return jsonify({'error': 'No text found in file'}), 400
         
-        # Use the same prediction logic as /predict endpoint
-        # ===========================
-        # 1️⃣ RoBERTa Prediction
-        # ===========================
-        
-        # Split text into chunks
-        sentences = re.split(r'(?<=[.!?])\s+', text)
-        sentences = [s.strip() for s in sentences if len(s.strip()) > 50]
-        
-        if not sentences:
-            sentences = [text]
-            
-        if len(sentences) > 1:
-            chunks = sentences + [text]
+        # Choose prediction mode
+        if mode == 'hybrid' and roberta_model:
+            result = predict_hybrid(text)
+            model_name = 'Hybrid Ensemble (RoBERTa + ML)'
         else:
-            chunks = sentences
-
-        chunk_probs = []
+            result = predict_ml_only(text)
+            model_name = 'Pure ML Ensemble (SVM + AdaBoost + RF)'
         
-        for chunk in chunks:
-            inputs = roberta_tokenizer(chunk, return_tensors="pt", truncation=True, max_length=512)
-            
-            with torch.no_grad():
-                outputs = roberta_model(**inputs)
-                probs = F.softmax(outputs.logits, dim=-1)
-                ai_p = float(probs[0][1])
-                chunk_probs.append(ai_p)
+        final_prob = result['final_probability']
+        is_ai = final_prob > 0.50 if mode == 'ml' else final_prob > 0.45
         
-        avg_ai_prob = sum(chunk_probs) / len(chunk_probs)
+        confidence = 'High' if final_prob > 0.85 or final_prob < 0.15 else \
+                    'Medium' if final_prob > 0.70 or final_prob < 0.30 else 'Low'
         
-        # Apply calibration
-        calibration_factor = 1.35
-        roberta_ai_prob = min(avg_ai_prob * calibration_factor, 1.0)
-        
-        print(f"🤖 RoBERTa (File): Raw={avg_ai_prob:.4f}, Calibrated={roberta_ai_prob:.4f}")
-        
-        # ===========================
-        # 2️⃣ ML Ensemble Prediction
-        # ===========================
-        
-        ml_ai_prob = 0.5  # Default neutral if ML not available
-        
-        if ml_ensemble and ml_scaler and ml_tfidf:
-            try:
-                # Extract features
-                feature_dict = extract_text_features(text)
-                feature_df = pd.DataFrame([feature_dict])
-                
-                # TF-IDF features
-                tfidf_features = ml_tfidf.transform([text]).toarray()
-                tfidf_df = pd.DataFrame(tfidf_features, columns=[f'tfidf_{i}' for i in range(tfidf_features.shape[1])])
-                
-                # Combine features
-                X = pd.concat([feature_df, tfidf_df], axis=1)
-                
-                # Scale
-                X_scaled = ml_scaler.transform(X)
-                
-                # Predict
-                ml_ai_prob = ml_ensemble.predict_proba(X_scaled)[0][1]
-                
-                print(f"🔬 ML Ensemble (File): {ml_ai_prob:.4f}")
-                
-            except Exception as e:
-                print(f"⚠️  ML prediction failed: {e}")
-                ml_ai_prob = 0.5  # Neutral fallback
-        
-        # ===========================
-        # 3️⃣ Combine Predictions
-        # ===========================
-        
-        # Weighted average
-        if ml_ensemble:
-            final_ai_prob = (ROBERTA_WEIGHT * roberta_ai_prob) + (ML_WEIGHT * ml_ai_prob)
-            model_name = 'Hybrid Ensemble (RoBERTa + RF + KNN)'
-        else:
-            final_ai_prob = roberta_ai_prob
-            model_name = 'RoBERTa ChatGPT Detector'
-        
-        # Decision threshold
-        is_ai = final_ai_prob > 0.45
-        
-        print(f"🎯 Final (File): {final_ai_prob:.4f} → {'AI' if is_ai else 'Human'}")
-        print(f"📄 File: {filename} ({file_ext.upper()})")
-        print("-" * 60)
-        
-        result = {
+        return jsonify({
             'is_ai': bool(is_ai),
-            'ai_probability': float(final_ai_prob),
-            'human_probability': float(1.0 - final_ai_prob),
+            'ai_probability': float(final_prob),
+            'human_probability': float(1.0 - final_prob),
             'label': 'AI' if is_ai else 'Human',
+            'confidence': confidence,
             'model_name': model_name,
+            'mode': mode,
             'filename': filename,
             'file_type': file_ext.upper(),
             'text_length': len(text),
             'word_count': len(text.split()),
-            'extracted_text': text,  # Return the extracted text for highlighting
-            'breakdown': {
-                'roberta_prob': float(roberta_ai_prob),
-                'ml_prob': float(ml_ai_prob) if ml_ensemble else None,
-                'roberta_weight': float(ROBERTA_WEIGHT),
-                'ml_weight': float(ML_WEIGHT) if ml_ensemble else 0.0
-            }
-        }
-        
-        return jsonify(result)
-        
+            'extracted_text': text
+        })
     except Exception as e:
-        import traceback
-        print("ERROR (File Upload):", str(e))
-        print(traceback.format_exc())
-        return jsonify({'error': f'Failed to process file: {str(e)}'}), 500
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    return jsonify({
+        'status': 'healthy',
+        'ml_models': ml_models_loaded,
+        'dl_model': roberta_model is not None
+    })
+
 
 if __name__ == '__main__':
-    # Disable reloader to prevent connection resets during file uploads
     app.run(debug=True, port=5000, use_reloader=False, threaded=True)
