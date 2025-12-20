@@ -91,7 +91,7 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
         run: |
           cd Backend
-          docker build -f ../Deployment/Dockerfile.backend -t $ECR_REGISTRY/$ECR_REPOSITORY_BACKEND:$IMAGE_TAG .
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY_BACKEND:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY_BACKEND:$IMAGE_TAG
           docker tag $ECR_REGISTRY/$ECR_REPOSITORY_BACKEND:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY_BACKEND:latest
           docker push $ECR_REGISTRY/$ECR_REPOSITORY_BACKEND:latest
@@ -102,7 +102,7 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
         run: |
           cd Frontend
-          docker build -f ../Deployment/Dockerfile.frontend -t $ECR_REGISTRY/$ECR_REPOSITORY_FRONTEND:$IMAGE_TAG .
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY_FRONTEND:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY_FRONTEND:$IMAGE_TAG
           docker tag $ECR_REGISTRY/$ECR_REPOSITORY_FRONTEND:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY_FRONTEND:latest
           docker push $ECR_REGISTRY/$ECR_REPOSITORY_FRONTEND:latest
