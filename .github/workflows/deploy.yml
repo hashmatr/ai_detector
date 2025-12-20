@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 env:
-  AWS_REGION: us-east-1
+  AWS_REGION: eu-north-1
   ECR_REPOSITORY_BACKEND: ai-detector-backend
   ECR_REPOSITORY_FRONTEND: ai-detector-frontend
   ECS_SERVICE: ai-detector-service
