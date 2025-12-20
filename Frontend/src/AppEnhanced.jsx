@@ -363,7 +363,6 @@ function AppEnhanced() {
                                     className={`detection-mode-btn ${detectionMode === 'ml' ? 'active' : ''}`}
                                     onClick={() => setDetectionMode('ml')}
                                 >
-                                    <span className="mode-icon">🔬</span>
                                     <span className="mode-title">Pure ML</span>
                                     <span className="mode-desc">SVM + AdaBoost + Random Forest</span>
                                 </button>
@@ -371,7 +370,6 @@ function AppEnhanced() {
                                     className={`detection-mode-btn ${detectionMode === 'hybrid' ? 'active' : ''}`}
                                     onClick={() => setDetectionMode('hybrid')}
                                 >
-                                    <span className="mode-icon">🤖</span>
                                     <span className="mode-title">Hybrid ML+DL</span>
                                     <span className="mode-desc">RoBERTa + ML Ensemble</span>
                                 </button>
@@ -444,7 +442,6 @@ function AppEnhanced() {
                                 {/* Warning Message */}
                                 {wordCount > 0 && wordCount < 100 && (
                                     <div className="warning-message">
-                                        <span>⚠</span>
                                         <span>
                                             Please add at least {100 - wordCount} more word{100 - wordCount !== 1 ? 's' : ''} for accurate analysis.
                                         </span>
@@ -464,7 +461,7 @@ function AppEnhanced() {
                                             onDrop={handleFileDrop}
                                             onDragOver={handleDragOver}
                                         >
-                                            <div className="file-drop-icon">↑</div>
+                                            <div className="file-drop-icon"></div>
                                             <h3>Upload a document to begin analysis</h3>
                                             <p>or</p>
                                             <label className="file-select-btn">
@@ -495,7 +492,7 @@ function AppEnhanced() {
                                                     onClick={clearFile}
                                                     aria-label="Remove file"
                                                 >
-                                                    ✕
+                                                    Remove
                                                 </button>
                                             </div>
                                         </div>
@@ -506,7 +503,7 @@ function AppEnhanced() {
                                 {selectedFile && (
                                     <div className="controls">
                                         <div className="file-ready-indicator">
-                                            <span>✔</span>
+
                                             <span>File ready for analysis</span>
                                         </div>
                                         <button
@@ -533,7 +530,7 @@ function AppEnhanced() {
                         {/* Error Message */}
                         {error && (
                             <div className="error-message">
-                                <span>×</span>
+
                                 <span>{error}</span>
                             </div>
                         )}
@@ -610,7 +607,7 @@ function AppEnhanced() {
                                 {highlightedText && result.ai_probability > 0.3 && (
                                     <div className="highlighted-text-section">
                                         <div className="highlighted-text-header">
-                                            <span>ⓘ</span>
+
                                             <span>AI-Suspected Sentences Highlighted</span>
                                         </div>
                                         <div
