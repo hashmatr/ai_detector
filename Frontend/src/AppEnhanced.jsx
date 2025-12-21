@@ -6,7 +6,6 @@ import BatchProcessing from './components/BatchProcessing';
 import { exportToPDF } from './utils/pdfExport';
 import { saveToHistory } from './utils/historyManager';
 import './components/components.css';
-import config from './config';
 
 function AppEnhanced() {
     // Navigation state
@@ -178,7 +177,7 @@ function AppEnhanced() {
         setHighlightedText('');
 
         try {
-            const response = await axios.post(`${config.API_BASE_URL}/predict`, { text });
+            const response = await axios.post('/predict', { text });
             const resultData = response.data;
             setResult(resultData);
 
@@ -256,7 +255,7 @@ function AppEnhanced() {
             const formData = new FormData();
             formData.append('file', selectedFile);
 
-            const response = await axios.post(`${config.API_BASE_URL}/predict-file`, formData, {
+            const response = await axios.post('/predict-file', formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data'
                 }

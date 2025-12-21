@@ -1,5 +1,4 @@
 import axios from 'axios';
-import config from '../config';
 
 /**
  * Process multiple files in batch
@@ -29,7 +28,7 @@ export const processBatchFiles = async (files, onProgress, onComplete, onError) 
             const formData = new FormData();
             formData.append('file', file);
 
-            const response = await axios.post(`${config.API_BASE_URL}/predict-file`, formData, {
+            const response = await axios.post('/predict-file', formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data'
                 }
