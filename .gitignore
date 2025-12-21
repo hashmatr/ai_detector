@@ -4,14 +4,34 @@ data.csv/
 data/
 datasets/
 
-# Model files (too large for GitHub)
-Backend/Models/*.joblib
-Backend/Models/*.pkl
-Backend/Models/*.h5
-Backend/Models/*.pt
-Backend/Models/*.pth
-*.joblib
-*.pkl
+# Report and presentation files (private)
+GAMMA_PRESENTATION_SCRIPT.md
+PROJECT_REPORT.md
+
+# Unused model files (only ml_ensemble_* files are used)
+Backend/Models/adaboost_model.joblib
+Backend/Models/best_kfold_model.joblib
+Backend/Models/best_kfold_vectorizer.joblib
+Backend/Models/best_model.joblib
+Backend/Models/char_vectorizer.joblib
+Backend/Models/decision_tree_model.joblib
+Backend/Models/ensemble_model.joblib
+Backend/Models/gradient_boosting_model.joblib
+Backend/Models/knn_model.joblib
+Backend/Models/knn_scaler.joblib
+Backend/Models/large_dataset_model.joblib
+Backend/Models/large_dataset_vectorizer.joblib
+Backend/Models/logistic_model.joblib
+Backend/Models/logistic_regression_model.joblib
+Backend/Models/modern_ai_model.joblib
+Backend/Models/modern_vectorizer.joblib
+Backend/Models/naive_bayes_model.joblib
+Backend/Models/random_forest_model.joblib
+Backend/Models/scaler.joblib
+Backend/Models/svm_model.joblib
+Backend/Models/tfidf_model.joblib
+Backend/Models/tfidf_vectorizer.joblib
+Backend/Models/word_vectorizer.joblib
 
 # Node modules
 node_modules/
