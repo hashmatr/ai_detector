@@ -1,13 +1,8 @@
-// API Configuration
-// In development: uses Vite proxy to localhost:5000
-// In production (Vercel): calls AWS backend directly
-
-const isDevelopment = import.meta.env.DEV;
-
 const config = {
-    // In production, call AWS backend directly
-    // In development, use Vite proxy (calls relative URLs)
-    API_BASE_URL: isDevelopment ? '' : 'http://51.21.253.28'
+    // In development with Vite proxy, these can remain relative
+    // In production (Vercel), the rewrites in vercel.json handle the proxying
+    // If VITE_API_URL is set, use it; otherwise default to '' which allows Vercel rewrites to work.
+    API_BASE_URL: import.meta.env.VITE_API_URL || '',
 };
 
 export default config;
