@@ -174,7 +174,7 @@ const History = ({ onSelectItem }) => {
                             <div className="history-item-header">
                                 <div className="history-item-info">
                                     <span className="history-type-badge">
-                                        {item.type === 'file' ? 'File' : 'Text'} {item.type}
+                                        {item.type === 'file' ? 'File' : 'Text'}
                                     </span>
                                     <span className="history-date">{formatDate(item.timestamp)}</span>
                                 </div>
@@ -202,7 +202,7 @@ const History = ({ onSelectItem }) => {
 
                             <div className="history-item-result">
                                 <div className={`result-badge ${item.result.is_ai ? 'ai' : 'human'}`}>
-                                    {item.result.is_ai ? 'AI' : 'Human'} {item.result.label}
+                                    {item.result.is_ai ? 'AI' : 'Human'}
                                 </div>
                                 <div className="probability-display">
                                     <span className="prob-label">AI:</span>
