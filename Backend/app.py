@@ -17,11 +17,10 @@ CORS(app)
 # GLOBAL VARIABLES
 # ===========================
 
-# Pure ML Ensemble Models
-svm_model = None
-adaboost_model = None
+# ML Models (KNN + Random Forest)
+knn_model = None
+knn_scaler = None
 random_forest_model = None
-
 tfidf_vectorizer = None
 
 # Deep Learning Model (RoBERTa)
@@ -29,11 +28,10 @@ roberta_model = None
 roberta_tokenizer = None
 torch_available = False
 
-# Model weights for ensemble voting
+# Model weights for ML ensemble voting
 MODEL_WEIGHTS = {
-    'SVM': 0.35,
-    'AdaBoost': 0.20,
-    'RandomForest': 0.45
+    'KNN': 0.45,
+    'RandomForest': 0.55
 }
 
 # Hybrid weights
@@ -44,68 +42,89 @@ ML_WEIGHT = 0.30
 MODELS_DIR = os.path.join(os.path.dirname(__file__), "Models")
 
 # ===========================
+# FEATURE EXTRACTION
+# ===========================
+
+def extract_text_features(text):
+    """Extract linguistic features from text"""
+    if not isinstance(text, str):
+        text = str(text)
+    
+    words = text.split()
+    word_count = len(words)
+    
+    features = {
+        'text_length': len(text),
+        'word_count': word_count,
+        'avg_word_length': np.mean([len(w) for w in words]) if words else 0,
+        'unique_word_ratio': len(set(words)) / word_count if word_count > 0 else 0,
+        'upper_case_ratio': sum(1 for c in text if c.isupper()) / len(text) if text else 0,
+        'digit_freq': sum(1 for c in text if c.isdigit()) / len(text) if text else 0,
+        'punc_freq': sum(1 for c in text if c in '.,!?;:') / len(text) if text else 0,
+        'exclamation_count': text.count('!'),
+        'question_count': text.count('?'),
+        'comma_count': text.count(','),
+        'period_count': text.count('.'),
+        'avg_sentence_length': word_count / max(text.count('.') + text.count('!') + text.count('?'), 1),
+    }
+    return features
+
+# ===========================
 # LOAD MODELS
 # ===========================
 
 print("=" * 60)
-print("🚀 LOADING AI DETECTION MODELS")
+print("LOADING AI DETECTION MODELS")
 print("=" * 60)
 
 # --- LOAD ML MODELS ---
-print("\n📦 LOADING PURE ML MODELS")
+print("\n[*] LOADING PURE ML MODELS (KNN + Random Forest)")
 print("-" * 40)
 
 # Load TF-IDF Vectorizer
-print(f"📝 Loading TF-IDF Vectorizer...")
+print(f"[*] Loading TF-IDF Vectorizer...")
 tfidf_path = os.path.join(MODELS_DIR, "tfidf_vectorizer.joblib")
 try:
     if os.path.exists(tfidf_path):
         tfidf_vectorizer = joblib.load(tfidf_path)
-        print(f"   ✅ TF-IDF Vectorizer loaded")
+        print(f"   [OK] TF-IDF Vectorizer loaded")
 except Exception as e:
-    print(f"   ❌ Failed: {e}")
+    print(f"   [FAIL] {e}")
 
-# Load SVM Model
-print(f"🔷 Loading SVM Model...")
-svm_path = os.path.join(MODELS_DIR, "svm_model.joblib")
+# Load KNN Model
+print(f"[*] Loading KNN Model...")
+knn_path = os.path.join(MODELS_DIR, "knn_model.joblib")
+knn_scaler_path = os.path.join(MODELS_DIR, "knn_scaler.joblib")
 try:
-    if os.path.exists(svm_path):
-        svm_model = joblib.load(svm_path)
-        print(f"   ✅ SVM Model loaded")
+    if os.path.exists(knn_path):
+        knn_model = joblib.load(knn_path)
+        print(f"   [OK] KNN Model loaded")
+    if os.path.exists(knn_scaler_path):
+        knn_scaler = joblib.load(knn_scaler_path)
+        print(f"   [OK] KNN Scaler loaded")
 except Exception as e:
-    print(f"   ❌ Failed: {e}")
-
-# Load AdaBoost Model
-print(f"🔶 Loading AdaBoost Model...")
-adaboost_path = os.path.join(MODELS_DIR, "adaboost_model.joblib")
-try:
-    if os.path.exists(adaboost_path):
-        adaboost_model = joblib.load(adaboost_path)
-        print(f"   ✅ AdaBoost Model loaded")
-except Exception as e:
-    print(f"   ❌ Failed: {e}")
+    print(f"   [FAIL] {e}")
 
 # Load Random Forest Model
-print(f"🌲 Loading Random Forest Model...")
+print(f"[*] Loading Random Forest Model...")
 rf_path = os.path.join(MODELS_DIR, "random_forest_model.joblib")
 try:
     if os.path.exists(rf_path):
         random_forest_model = joblib.load(rf_path)
-        print(f"   ✅ Random Forest Model loaded")
+        print(f"   [OK] Random Forest Model loaded")
 except Exception as e:
-    print(f"   ❌ Failed: {e}")
+    print(f"   [FAIL] {e}")
 
 # Count ML models
 ml_models_loaded = sum([
-    svm_model is not None,
-    adaboost_model is not None,
+    knn_model is not None,
     random_forest_model is not None
 ])
 
 # --- LOAD DL MODEL (RoBERTa) ---
-print("\n🤖 LOADING DEEP LEARNING MODEL")
+print("\n[*] LOADING DEEP LEARNING MODEL")
 print("-" * 40)
-print("📥 Loading RoBERTa Transformer...")
+print("[*] Loading RoBERTa Transformer...")
 
 try:
     import torch
@@ -117,17 +136,17 @@ try:
     
     roberta_tokenizer = AutoTokenizer.from_pretrained(roberta_model_name)
     roberta_model = AutoModelForSequenceClassification.from_pretrained(roberta_model_name)
-    print(f"   ✅ RoBERTa loaded ({roberta_model_name})")
+    print(f"   [OK] RoBERTa loaded ({roberta_model_name})")
 except Exception as e:
-    print(f"   ❌ RoBERTa not available: {e}")
+    print(f"   [FAIL] RoBERTa not available: {e}")
     torch_available = False
 
 print("\n" + "=" * 60)
-print(f"✅ ML MODELS: {ml_models_loaded}/3")
-print(f"✅ DL MODEL: {'RoBERTa Loaded' if roberta_model else 'Not Available'}")
-print(f"📊 TF-IDF: {'✅' if tfidf_vectorizer else '❌'}")
+print(f"ML MODELS: {ml_models_loaded}/2 (KNN + Random Forest)")
+print(f"DL MODEL: {'RoBERTa Loaded' if roberta_model else 'Not Available'}")
+print(f"TF-IDF: {'OK' if tfidf_vectorizer else 'FAIL'}")
 print("-" * 60)
-print(f"⚖️  HYBRID RATIO: RoBERTa {ROBERTA_WEIGHT*100:.0f}% | ML {ML_WEIGHT*100:.0f}%")
+print(f"HYBRID RATIO: RoBERTa {ROBERTA_WEIGHT*100:.0f}% | ML {ML_WEIGHT*100:.0f}%")
 print("=" * 60 + "\n")
 
 # ===========================
@@ -135,7 +154,7 @@ print("=" * 60 + "\n")
 # ===========================
 
 def predict_ml_only(text):
-    """Pure ML prediction using SVM, AdaBoost, Random Forest"""
+    """Pure ML prediction using KNN + Random Forest"""
     if not tfidf_vectorizer:
         raise ValueError("TF-IDF Vectorizer not loaded")
     
@@ -143,24 +162,20 @@ def predict_ml_only(text):
     predictions = {}
     probabilities = {}
     
-    if svm_model:
+    if knn_model:
         try:
-            pred = svm_model.predict(X)[0]
-            predictions['SVM'] = int(pred)
-            decision = svm_model.decision_function(X)[0]
-            prob = 1 / (1 + np.exp(-decision))
-            probabilities['SVM'] = float(prob)
+            # For KNN, we may need to scale or use directly
+            if knn_scaler:
+                X_scaled = knn_scaler.transform(X.toarray())
+                pred = knn_model.predict(X_scaled)[0]
+                prob = knn_model.predict_proba(X_scaled)[0][1]
+            else:
+                pred = knn_model.predict(X)[0]
+                prob = knn_model.predict_proba(X)[0][1]
+            predictions['KNN'] = int(pred)
+            probabilities['KNN'] = float(prob)
         except Exception as e:
-            print(f"⚠️ SVM error: {e}")
-    
-    if adaboost_model:
-        try:
-            pred = adaboost_model.predict(X)[0]
-            predictions['AdaBoost'] = int(pred)
-            prob = adaboost_model.predict_proba(X)[0][1]
-            probabilities['AdaBoost'] = float(prob)
-        except Exception as e:
-            print(f"⚠️ AdaBoost error: {e}")
+            print(f"[WARN] KNN error: {e}")
     
     if random_forest_model:
         try:
@@ -169,7 +184,7 @@ def predict_ml_only(text):
             prob = random_forest_model.predict_proba(X)[0][1]
             probabilities['RandomForest'] = float(prob)
         except Exception as e:
-            print(f"⚠️ Random Forest error: {e}")
+            print(f"[WARN] Random Forest error: {e}")
     
     if not probabilities:
         raise ValueError("No ML models available")
@@ -178,7 +193,7 @@ def predict_ml_only(text):
     total_weight = 0
     weighted_prob = 0
     for model_name, prob in probabilities.items():
-        weight = MODEL_WEIGHTS.get(model_name, 0.33)
+        weight = MODEL_WEIGHTS.get(model_name, 0.5)
         weighted_prob += weight * prob
         total_weight += weight
     
@@ -269,7 +284,7 @@ def predict():
 
 @app.route('/predict-ml', methods=['POST'])
 def predict_ml_endpoint():
-    """Pure ML prediction endpoint"""
+    """Pure ML prediction endpoint (KNN + Random Forest)"""
     if ml_models_loaded == 0 or not tfidf_vectorizer:
         return jsonify({'error': 'ML models not loaded'}), 500
     
@@ -287,7 +302,7 @@ def predict_ml_endpoint():
         confidence = 'High' if final_prob > 0.85 or final_prob < 0.15 else \
                     'Medium' if final_prob > 0.70 or final_prob < 0.30 else 'Low'
         
-        print(f"\n[ML] Final: {final_prob:.4f} → {'AI' if is_ai else 'Human'}")
+        print(f"\n[ML] Final: {final_prob:.4f} -> {'AI' if is_ai else 'Human'}")
         
         return jsonify({
             'is_ai': bool(is_ai),
@@ -295,7 +310,7 @@ def predict_ml_endpoint():
             'human_probability': float(1.0 - final_prob),
             'label': 'AI' if is_ai else 'Human',
             'confidence': confidence,
-            'model_name': 'Pure ML Ensemble (SVM + AdaBoost + RF)',
+            'model_name': 'Pure ML Ensemble (KNN + Random Forest)',
             'mode': 'ml_only',
             'breakdown': result['probabilities']
         })
@@ -305,7 +320,7 @@ def predict_ml_endpoint():
 
 @app.route('/predict-hybrid', methods=['POST'])
 def predict_hybrid_endpoint():
-    """Hybrid ML + DL prediction endpoint"""
+    """Hybrid ML + DL prediction endpoint (KNN + RF + RoBERTa)"""
     if not roberta_model:
         return jsonify({'error': 'RoBERTa model not loaded'}), 500
     if ml_models_loaded == 0:
@@ -333,7 +348,7 @@ def predict_hybrid_endpoint():
             'human_probability': float(1.0 - final_prob),
             'label': 'AI' if is_ai else 'Human',
             'confidence': confidence,
-            'model_name': 'Hybrid Ensemble (RoBERTa + ML)',
+            'model_name': 'Hybrid Ensemble (RoBERTa + KNN + RF)',
             'mode': 'hybrid',
             'breakdown': {
                 'roberta_prob': float(result['roberta_probability']),
@@ -385,10 +400,10 @@ def predict_file():
         # Choose prediction mode
         if mode == 'hybrid' and roberta_model:
             result = predict_hybrid(text)
-            model_name = 'Hybrid Ensemble (RoBERTa + ML)'
+            model_name = 'Hybrid Ensemble (RoBERTa + KNN + RF)'
         else:
             result = predict_ml_only(text)
-            model_name = 'Pure ML Ensemble (SVM + AdaBoost + RF)'
+            model_name = 'Pure ML Ensemble (KNN + Random Forest)'
         
         final_prob = result['final_probability']
         is_ai = final_prob > 0.50 if mode == 'ml' else final_prob > 0.45
